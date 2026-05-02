@@ -1,0 +1,194 @@
+#!/usr/bin/env node
+// Fetches Emmet Cohen's YouTube stream data and writes videos.json
+// Run locally: YOUTUBE_API_KEY=your_key node fetch-videos.js
+// In CI: key comes from GitHub Actions secret
+
+const fs = require("fs");
+
+const API_KEY = process.env.YOUTUBE_API_KEY;
+if (!API_KEY) {
+  console.error("Missing YOUTUBE_API_KEY environment variable");
+  process.exit(1);
+}
+
+function parseDuration(iso) {
+  const m = iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+  if (!m) return 0;
+  return (parseInt(m[1] || 0) * 3600) + (parseInt(m[2] || 0) * 60) + parseInt(m[3] || 0);
+}
+
+function tsToSeconds(ts) {
+  const parts = ts.split(":").map(Number);
+  return parts.length === 3
+    ? parts[0] * 3600 + parts[1] * 60 + parts[2]
+    : parts[0] * 60 + parts[1];
+}
+
+const skipSong = /^(introduction of|intro to|intermission|set break|break\b|gratitude|thank)|\b(introduces|welcomes|solo)\b/i;
+
+function cleanSongTitle(title) {
+  return title.replace(/\s*[-–].*$/, "").trim();
+}
+
+function parseSongs(description) {
+  const songs = [];
+  for (const line of description.split("\n")) {
+    const m = line.match(/^(\d+:\d{2}(?::\d{2})?)\s+(.+)$/);
+    if (!m) continue;
+    const title = m[2].trim();
+    if (skipSong.test(title)) continue;
+    songs.push({ title: cleanSongTitle(title), start: tsToSeconds(m[1]) });
+  }
+  return songs;
+}
+
+const skipArtistName = /^(recorded|signup|sign up|subscribe|follow|visit|ticket|merch|stream|buy|listen|available|support|learn|check|watch|like|share|comment|produc|mix|master|photograph|video|film|edit|artwork|design|engineer|live at|live from|new york|new orleans|shot |set list|setlist|special thanks|thank|sponsor|presented|hosted|booking|contact|email|website|facebook|twitter|instagram|youtube|spotify|apple)/i;
+
+function parseArtists(description) {
+  const artists = [];
+  for (const line of description.split("\n")) {
+    const match = line.match(/^([A-Z][^-\n]{1,40})\s*[-–]\s*([A-Za-z][^\n]{1,40})$/);
+    if (!match) continue;
+    const name = match[1].trim();
+    const instrument = match[2].trim();
+    if (name.includes("http") || name.includes("@")) continue;
+    if (instrument.includes("http") || /^\d/.test(instrument)) continue;
+    if (skipArtistName.test(name) || skipArtistName.test(instrument) || skipArtistName.test(name + " " + instrument)) continue;
+    artists.push({ name, instrument });
+  }
+  return artists;
+}
+
+async function fetchLiveVideoId(channelId) {
+  const res = await fetch(
+    `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&eventType=live&type=video&key=${API_KEY}`
+  );
+  const data = await res.json();
+  return data.items?.[0]?.id?.videoId || null;
+}
+
+async function fetchUpcomingVideoId(channelId) {
+  const res = await fetch(
+    `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&eventType=upcoming&type=video&key=${API_KEY}`
+  );
+  const data = await res.json();
+  return data.items?.[0]?.id?.videoId || null;
+}
+
+async function fetchChannelVideos() {
+  const channelRes = await fetch(
+    `https://www.googleapis.com/youtube/v3/channels?part=contentDetails&forHandle=EmmetCohen&key=${API_KEY}`
+  );
+  const channelData = await channelRes.json();
+  const channelItem = channelData.items[0];
+  const uploadsId = channelItem.contentDetails.relatedPlaylists.uploads;
+  fetchChannelVideos._channelId = channelItem.id;
+
+  const ids = [];
+  let pageToken = null;
+  do {
+    const url = `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${uploadsId}&maxResults=50&key=${API_KEY}${pageToken ? `&pageToken=${pageToken}` : ""}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    for (const item of (data.items || [])) {
+      const id = item.snippet.resourceId?.videoId;
+      if (id) ids.push(id);
+    }
+    pageToken = data.nextPageToken || null;
+  } while (pageToken);
+
+  return ids;
+}
+
+async function fetchVideoData(ids) {
+  const batches = [];
+  for (let i = 0; i < ids.length; i += 50) batches.push(ids.slice(i, i + 50));
+  const results = {};
+  await Promise.all(batches.map(async (batch) => {
+    const res = await fetch(
+      `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,liveStreamingDetails&id=${batch.join(",")}&key=${API_KEY}`
+    );
+    const data = await res.json();
+    for (const item of (data.items || [])) {
+      const desc = item.snippet.description || "";
+      results[item.id] = {
+        title: item.snippet.title,
+        duration: parseDuration(item.contentDetails?.duration || ""),
+        isLive: !!item.liveStreamingDetails,
+        streamDate: item.liveStreamingDetails?.actualStartTime || item.snippet.publishedAt,
+        scheduledStartTime: item.liveStreamingDetails?.scheduledStartTime || null,
+        description: desc,
+        artists: parseArtists(desc),
+        songs: parseSongs(desc),
+      };
+    }
+  }));
+  return results;
+}
+
+async function mainLiveOnly() {
+  const existing = JSON.parse(fs.readFileSync("videos.json", "utf8"));
+
+  // Get channel ID from existing data to avoid an extra API call
+  const channelRes = await fetch(
+    `https://www.googleapis.com/youtube/v3/channels?part=id&forHandle=EmmetCohen&key=${API_KEY}`
+  );
+  const channelData = await channelRes.json();
+  const channelId = channelData.items[0].id;
+
+  console.log("Checking for live broadcast...");
+  const liveVideoId = await fetchLiveVideoId(channelId);
+  console.log(liveVideoId ? `Live video: ${liveVideoId}` : "No live broadcast");
+
+  console.log("Checking for upcoming broadcast...");
+  const upcomingVideoId = await fetchUpcomingVideoId(channelId);
+  console.log(upcomingVideoId ? `Upcoming video: ${upcomingVideoId}` : "No upcoming broadcast");
+
+  // Fetch details for upcoming video if not already in data
+  if (upcomingVideoId && !existing.data[upcomingVideoId]) {
+    const extra = await fetchVideoData([upcomingVideoId]);
+    Object.assign(existing.data, extra);
+  }
+
+  existing.liveVideoId = liveVideoId;
+  // If the same video appears in both live and upcoming (YouTube API quirk), treat it as live only
+  existing.upcomingVideoId = liveVideoId ? null : upcomingVideoId;
+  fs.writeFileSync("videos.json", JSON.stringify(existing));
+  console.log("Updated liveVideoId in videos.json");
+}
+
+async function main() {
+  console.log("Fetching channel videos...");
+  const ids = await fetchChannelVideos();
+  const channelId = fetchChannelVideos._channelId;
+  console.log(`Found ${ids.length} video IDs`);
+
+  console.log("Fetching video details...");
+  const data = await fetchVideoData(ids);
+  console.log(`Fetched details for ${Object.keys(data).length} videos`);
+
+  console.log("Checking for live broadcast...");
+  const liveVideoId = await fetchLiveVideoId(channelId);
+  if (liveVideoId) console.log(`Live video: ${liveVideoId}`);
+
+  console.log("Checking for upcoming broadcast...");
+  const upcomingVideoId = await fetchUpcomingVideoId(channelId);
+  if (upcomingVideoId) console.log(`Upcoming video: ${upcomingVideoId}`);
+
+  // Fetch details for upcoming video if not already in data
+  if (upcomingVideoId && !data[upcomingVideoId]) {
+    const extra = await fetchVideoData([upcomingVideoId]);
+    Object.assign(data, extra);
+  }
+
+  const output = { generatedAt: new Date().toISOString(), ids, data, liveVideoId, upcomingVideoId };
+  fs.writeFileSync("videos.json", JSON.stringify(output));
+  console.log("Wrote videos.json");
+}
+
+if (process.argv.includes("--live-only")) {
+  mainLiveOnly().catch((err) => { console.error(err); process.exit(1); });
+} else {
+  main().catch((err) => { console.error(err); process.exit(1); });
+}
+
