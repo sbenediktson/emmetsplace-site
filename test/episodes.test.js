@@ -66,3 +66,17 @@ test('sorted newest first', () => {
   for (let i = 1; i < dated.length; i++) assert.ok(dated[i - 1].streamDate >= dated[i].streamDate);
   assert.strictEqual(eps[eps.length - 1].id, 'v100');
 });
+
+test('apostrophe-less "Re-Stream -" title folds into numbered original', () => {
+  assert.strictEqual(eps.filter((e) => e.number === 33).length, 1);
+  const ep = byId('v33');
+  assert.strictEqual(ep.location, 'Harlem, New York');
+  assert.deepStrictEqual(ep.restreams.map((r) => r.id), ['v33r']);
+  assert.ok(!byId('v33r'));
+});
+
+test('pageTitle strips Re-Stream prefix for orphan re-stream', () => {
+  const t = pageTitle(byId('orph'));
+  assert.ok(!/re-?stream/i.test(t));
+  assert.ok(t.endsWith('(2026)'));
+});

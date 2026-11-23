@@ -10,7 +10,9 @@ function normalizeApos(s) {
   return s.replace(/[‘’ʼ`´]/g, "'");
 }
 
-const isRestream = (title) => /^\s*re-?stream\b\s*:?/i.test(title);
+const RESTREAM_PREFIX = /^\s*re-?stream\b\s*[:\-\u2013\u2014]?\s*/i;
+const isRestream = (title) => RESTREAM_PREFIX.test(title);
+const stripRestream = (title) => title.replace(RESTREAM_PREFIX, '');
 
 // Series number, or null. "Masters Legacy Series" is a different series.
 function parseNumber(title) {
@@ -18,7 +20,7 @@ function parseNumber(title) {
   if (/masters legacy/i.test(t)) return null;
   const ep = t.match(/\(\s*Ep(?:isode|\.)?\s*(\d+)\s*\)/i);
   if (ep) return Number(ep[1]);
-  if (/emmet's place/i.test(t)) {
+  if (/emmets?'?\s*place/i.test(t)) {
     const vol = t.match(/\b(?:Vol(?:ume)?|Ep(?:isode)?)\.?\s*(\d+)/i);
     if (vol) return Number(vol[1]);
   }
@@ -26,7 +28,7 @@ function parseNumber(title) {
 }
 
 function parseGuests(title) {
-  const m = stripEmoji(title).match(/\bVol\.?\s*\d+\s*[-–—]\s*(.+)$/i);
+  const m = stripRestream(stripEmoji(title)).match(/\bVol\.?\s*\d+\s*[-–—]\s*(.+)$/i);
   return m ? m[1].trim() : null;
 }
 
@@ -37,7 +39,7 @@ function locationFor(number) {
 
 function groupKey(title, number) {
   if (number !== null) return 'n:' + number;
-  return 't:' + normalizeApos(stripEmoji(title).replace(/^\s*re-?stream\s*:?\s*/i, '')).toLowerCase().replace(/\s+/g, ' ');
+  return 't:' + normalizeApos(stripRestream(stripEmoji(title))).toLowerCase().replace(/\s+/g, ' ');
 }
 
 // Earliest date first; missing dates last.
@@ -92,7 +94,7 @@ function pageTitle(ep) {
   if (ep.number !== null && ep.guests) {
     base = `${ep.guests} - Live From Emmet's Place Vol. ${ep.number}`;
   } else {
-    base = stripEmoji(ep.title)
+    base = stripRestream(stripEmoji(ep.title))
       .replace(/\(\s*Ep(?:isode|\.)?\s*\d+\s*\)/i, '')
       .replace(/\s+/g, ' ')
       .trim();
