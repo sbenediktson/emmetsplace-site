@@ -102,4 +102,4 @@ function pageTitle(ep) {
   return ep.year ? `${base} (${ep.year})` : base;
 }
 
-module.exports = { selectEpisodes, pageTitle, stripEmoji };
+module.exports = { selectEpisodes, pageTitle, stripEmoji, RESTREAM_PREFIX };
