@@ -20,7 +20,7 @@ function parseNumber(title) {
   if (/masters legacy/i.test(t)) return null;
   const ep = t.match(/\(\s*Ep(?:isode|\.)?\s*(\d+)\s*\)/i);
   if (ep) return Number(ep[1]);
-  if (/emmets?'?\s*place/i.test(t)) {
+  if (/emmet'?s?\s*place/i.test(t)) {
     const vol = t.match(/\b(?:Vol(?:ume)?|Ep(?:isode)?)\.?\s*(\d+)/i);
     if (vol) return Number(vol[1]);
   }
