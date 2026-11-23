@@ -32,15 +32,23 @@ function readWriters(root) {
   const list = readJson(file, 'content/writers.json');
   if (!Array.isArray(list)) throw new Error('content/writers.json must be an array');
   for (const w of list) {
-    if (!w || typeof w.name !== 'string' || !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(w.slug || '') || !Array.isArray(w.episodeIds)) {
+    if (!w || typeof w.name !== 'string' || !SLUG_RE.test(w.slug || '') || !Array.isArray(w.episodeIds)) {
       throw new Error(`Invalid writer entry: ${JSON.stringify(w)}`);
     }
   }
   return list;
 }
 
+const SLUG_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+
 function requireSlugs(items, map, what) {
   for (const key of items) if (!map[key]) throw new Error(`No slug allocated for ${what} ${key}`);
+  const seen = new Map();
+  for (const [key, slug] of Object.entries(map)) {
+    if (typeof slug !== 'string' || !SLUG_RE.test(slug)) throw new Error(`Invalid slug for ${what} ${key}: ${JSON.stringify(slug)}`);
+    if (seen.has(slug)) throw new Error(`Duplicate slug ${JSON.stringify(slug)} for ${what} ${seen.get(slug)} and ${key}`);
+    seen.set(slug, key);
+  }
 }
 
 function buildSite({ root }) {
@@ -70,6 +78,10 @@ function buildSite({ root }) {
   });
   for (const m of musicians) files.set(`musicians/${slugs.musicians[m.name]}/index.html`, renderMusicianPage(m, baseCtx));
   for (const w of readWriters(root)) files.set(`writers/${w.slug}/index.html`, renderWriterPage(w, episodes, baseCtx));
+
+  for (const k of files.keys()) {
+    if (k.includes('..') || k.startsWith('/') || k.includes('\\')) throw new Error(`Unsafe output path: ${k}`);
+  }
 
   const newest = (list) => list.map(dateOf).filter(Boolean).sort().pop();
   const entry = (loc, lastmod) => ({ loc: SITE_URL + loc, ...(lastmod ? { lastmod } : {}) });

@@ -122,3 +122,31 @@ test('CLI: writes site, removes stale generated dirs, keeps hand-written ones', 
   assert.ok(fs.existsSync(path.join(root, 'sitemap.xml')) && fs.existsSync(path.join(root, 'slugs.json')));
   assert.ok(fs.readFileSync(path.join(root, 'index.html'), 'utf8').includes('INTRO TEXT'));
 });
+
+function pin(root, episodes, musicians = {}) {
+  fs.writeFileSync(path.join(root, 'slugs.json'), JSON.stringify({ episodes, musicians }));
+}
+
+test('pinned slugs are validated: traversal, non-string, duplicates', () => {
+  for (const bad of ['../x', '..', 'a/b', '/abs', 42]) {
+    const root = project();
+    pin(root, { v134: bad });
+    assert.throws(() => buildSite({ root }), /Invalid slug for episode v134/, String(bad));
+  }
+  const root = project();
+  pin(root, { v134: 'same', v136: 'same' });
+  assert.throws(() => buildSite({ root }), /Duplicate slug "same"/);
+  const m = project();
+  pin(m, {}, { 'Kurt Elling': '../evil' });
+  assert.throws(() => buildSite({ root: m }), /Invalid slug for musician Kurt Elling/);
+});
+
+test('CLI: traversal slug exits 1 and leaves tree untouched', () => {
+  const root = project();
+  pin(root, { v134: '../x' });
+  const before = snapshot(root);
+  const r = cli(root);
+  assert.strictEqual(r.status, 1);
+  assert.match(r.stderr, /Invalid slug/);
+  assert.deepStrictEqual(snapshot(root), before);
+});
