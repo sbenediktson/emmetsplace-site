@@ -2,19 +2,13 @@
 
 const { esc, SITE_URL } = require('./html');
 const { pageTitle } = require('./episodes');
+const { formatLongDate } = require('./dates');
 
 const episodeUrl = (slug) => `/episodes/${slug}/`;
 const musicianUrl = (slug) => `/musicians/${slug}/`;
 const watchUrl = (id) => `https://www.youtube.com/watch?v=${id}`;
 
-const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-
-function formatDate(iso) {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (isNaN(d)) return '';
-  return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`;
-}
+const formatDate = formatLongDate;
 
 function trim160(s) {
   if (s.length <= 160) return s;
@@ -24,9 +18,20 @@ function trim160(s) {
 
 function describeEpisode(ep) {
   const names = ep.artists.map((a) => a.name).filter(Boolean);
-  const label = ep.number !== null ? `Vol. ${ep.number} of Live From Emmet's Place` : `${pageTitle(ep)} from Live From Emmet's Place`;
   const date = formatDate(ep.streamDate);
-  let s = `Watch ${label}`;
+  if (ep.number === null) {
+    // Lead with the (unique) page title; add the date, then the lineup, only as space allows.
+    let s = `Watch ${pageTitle(ep)}, a full-length Emmet Cohen concert`;
+    const fit = (extra) => { if ((s + extra + '.').length <= 160) s += extra; };
+    if (date) fit(`, streamed ${date}`);
+    for (let k = names.length; k > 0; k--) {
+      const before = s;
+      fit(` with ${names.slice(0, k).join(', ')}`);
+      if (s !== before) break;
+    }
+    return trim160(s + '.');
+  }
+  let s = `Watch Vol. ${ep.number} of Live From Emmet's Place`;
   if (names.length) s += ` featuring ${names.join(', ')}`;
   if (date) s += `, streamed ${date}`;
   if (ep.location) s += ` from ${ep.location}`;

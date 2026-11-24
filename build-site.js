@@ -31,10 +31,13 @@ function readWriters(root) {
   if (!fs.existsSync(file)) return [];
   const list = readJson(file, 'content/writers.json');
   if (!Array.isArray(list)) throw new Error('content/writers.json must be an array');
+  const seen = new Set();
   for (const w of list) {
     if (!w || typeof w.name !== 'string' || !SLUG_RE.test(w.slug || '') || !Array.isArray(w.episodeIds)) {
       throw new Error(`Invalid writer entry: ${JSON.stringify(w)}`);
     }
+    if (seen.has(w.slug)) throw new Error(`Duplicate writer slug ${JSON.stringify(w.slug)} in content/writers.json`);
+    seen.add(w.slug);
   }
   return list;
 }
@@ -73,8 +76,9 @@ function buildSite({ root }) {
   const intro = fs.readFileSync(path.join(root, 'content', 'home-intro.html'), 'utf8');
   files.set('index.html', replaceBetweenMarkers(replaceBetweenMarkers(home, 'intro', intro), 'cards', renderCards(episodes, slugs.episodes)));
 
+  // episodes are newest first: "Previous" is the next-older episode, "Next" the next-newer.
   episodes.forEach((ep, i) => {
-    files.set(`episodes/${slugs.episodes[ep.id]}/index.html`, renderEpisodePage(ep, { ...baseCtx, prev: episodes[i - 1], next: episodes[i + 1] }));
+    files.set(`episodes/${slugs.episodes[ep.id]}/index.html`, renderEpisodePage(ep, { ...baseCtx, prev: episodes[i + 1], next: episodes[i - 1] }));
   });
   for (const m of musicians) files.set(`musicians/${slugs.musicians[m.name]}/index.html`, renderMusicianPage(m, baseCtx));
   for (const w of readWriters(root)) files.set(`writers/${w.slug}/index.html`, renderWriterPage(w, episodes, baseCtx));

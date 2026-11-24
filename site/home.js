@@ -2,6 +2,7 @@
 
 const { esc } = require('./html');
 const { stripEmoji } = require('./episodes');
+const { nyParts, formatLongDate } = require('./dates');
 
 const QNAME = { '01': 'Jan', '04': 'Apr', '07': 'Jul', '10': 'Oct' };
 const MAX_VISIBLE_SONGS = 6;
@@ -13,10 +14,12 @@ function cardType(ep) {
   return 'other';
 }
 
-function quarterKey(date) {
-  const m = date.getUTCMonth();
-  const qs = m < 3 ? 0 : m < 6 ? 3 : m < 9 ? 6 : 9;
-  return `${date.getUTCFullYear()}-${String(qs + 1).padStart(2, '0')}`;
+// "YYYY-MM" of the quarter's first month, in New York time; null for a bad date.
+function quarterKey(value) {
+  const p = nyParts(value);
+  if (!p) return null;
+  const qs = Math.floor((p.month - 1) / 3) * 3;
+  return `${p.year}-${String(qs + 1).padStart(2, '0')}`;
 }
 
 function quarterHeaderText(key) {
@@ -24,15 +27,16 @@ function quarterHeaderText(key) {
   return `${QNAME[mm]} ${yyyy}`;
 }
 
-function formatDate(iso) {
-  return new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
-}
+
+// Cmd/Ctrl/Shift-click follows the link instead of playing in the hero player.
+const LET_MODIFIED_CLICK = 'if(event.metaKey||event.ctrlKey||event.shiftKey)return true;';
 
 function songLink(id, song) {
   const title = stripEmoji(song.title);
-  const href = `https://www.youtube.com/watch?v=${id}` + (song.start ? `&t=${song.start}` : '');
-  const startArg = song.start ? `,true,false,${song.start}` : ',true,false';
-  return `<a class="video-entry-link" data-text="${esc(title)}" href="${esc(href)}" onclick="playInHero('${esc(id)}'${esc(startArg)});return false;">${esc(title)}</a>`;
+  const start = Math.floor(Number(song.start) || 0);
+  const href = `https://www.youtube.com/watch?v=${id}` + (start ? `&t=${start}` : '');
+  const startArg = start ? `,true,false,${start}` : ',true,false';
+  return `<a class="video-entry-link" data-text="${esc(title)}" href="${esc(href)}" onclick="${LET_MODIFIED_CLICK}playInHero('${esc(id)}'${esc(startArg)});return false;">${esc(title)}</a>`;
 }
 
 function renderCard(ep, slug) {
@@ -41,7 +45,7 @@ function renderCard(ep, slug) {
   const type = cardType(ep);
   const thumb = `https://img.youtube.com/vi/${id}/hqdefault.jpg`;
   const href = `/episodes/${slug}/`;
-  const play = `playInHero('${esc(id)}',true,false);return false;`;
+  const play = `${LET_MODIFIED_CLICK}playInHero('${esc(id)}',true,false);return false;`;
 
   const artistsHTML = ep.artists.length
     ? `<div class="video-artists">${ep.artists.map((a) =>
@@ -70,7 +74,7 @@ function renderCard(ep, slug) {
     `<div class="video-card-body">` +
     (type === 'studio' ? '<span class="studio-badge">In Studio</span>' : '') +
     `<h2><a class="title-link" href="${esc(href)}" onclick="${play}">${esc(videoTitle)}</a></h2>` +
-    (ep.streamDate ? `<div class="stream-date">${esc(formatDate(ep.streamDate))}</div>` : '') +
+    (formatLongDate(ep.streamDate) ? `<div class="stream-date">${esc(formatLongDate(ep.streamDate))}</div>` : '') +
     (hasExtra
       ? `<div id="${collapseId}" style="display:none">${artistsHTML}<div class="video-entries">${entriesHTML}</div></div>` +
         `<button class="card-expand-btn" onclick="var el=document.getElementById('${collapseId}');var open=el.style.display!=='none';el.style.display=open?'none':'';this.textContent=open?'Show more':'Show less'">Show more</button>`
@@ -84,7 +88,7 @@ function renderCards(episodes, slugs) {
   for (const ep of episodes) {
     const slug = slugs[ep.id];
     if (!slug) throw new Error(`No slug for episode ${ep.id}`);
-    const q = ep.streamDate ? quarterKey(new Date(ep.streamDate)) : null;
+    const q = quarterKey(ep.streamDate);
     if (q && q !== lastQuarter) {
       const yr = q.split('-')[0];
       const isNewYear = !lastQuarter || lastQuarter.split('-')[0] !== yr;

@@ -150,3 +150,27 @@ test('CLI: traversal slug exits 1 and leaves tree untouched', () => {
   assert.match(r.stderr, /Invalid slug/);
   assert.deepStrictEqual(snapshot(root), before);
 });
+
+// ---- final-review fix wave ----
+test('pager: "Previous" is the older episode, "Next" the newer', () => {
+  const data = {
+    a: { title: 'Concert Alpha', streamDate: '2025-01-10T12:00:00Z', duration: 5000 },
+    b: { title: 'Concert Beta', streamDate: '2025-02-10T12:00:00Z', duration: 5000 },
+    c: { title: 'Concert Gamma', streamDate: '2025-03-10T12:00:00Z', duration: 5000 },
+  };
+  const { files } = buildSite({ root: project({ videos: JSON.stringify({ data }) }) });
+  const mid = files.get('episodes/concert-beta/index.html');
+  assert.match(mid, /<a href="\/episodes\/concert-alpha\/">Previous: Concert Alpha \(2025\)<\/a>/);
+  assert.match(mid, /<a href="\/episodes\/concert-gamma\/">Next: Concert Gamma \(2025\)<\/a>/);
+  assert.doesNotMatch(files.get('episodes/concert-alpha/index.html'), /Previous:/);
+  assert.doesNotMatch(files.get('episodes/concert-gamma/index.html'), /Next:/);
+});
+
+test('writers: duplicate slug throws a clear error', () => {
+  const root = project();
+  fs.writeFileSync(path.join(root, 'content/writers.json'), JSON.stringify([
+    { slug: 'jane-doe', name: 'Jane Doe', episodeIds: [] },
+    { slug: 'jane-doe', name: 'Jane Other', episodeIds: [] },
+  ]));
+  assert.throws(() => buildSite({ root }), /Duplicate writer slug "jane-doe"/);
+});

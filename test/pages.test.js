@@ -82,3 +82,38 @@ test('writer page is noindex and lists episodes', () => {
   assert.ok(html.includes('href="/episodes/vol-134-kurt-elling/"'));
   assert.ok(!html.includes('zzz'));
 });
+
+// ---- final-review fix wave ----
+test('episode page date is America/New_York', () => {
+  const html = renderEpisodePage(ep({ streamDate: '2025-03-04T00:30:00Z' }), ctx);
+  assert.ok(html.includes('March 3, 2025'));
+  assert.ok(!html.includes('March 4, 2025'));
+  assert.ok(desc(html).includes('March 3, 2025'));
+});
+
+test('non-numbered concert description is not "from Live From Emmet\'s Place"', () => {
+  const html = renderEpisodePage(ep({ number: null, guests: null, location: null, title: 'Emmet Cohen Trio Live at the Gilmore', year: 2022, streamDate: '2022-02-22T00:30:10Z' }), ctx);
+  const d = desc(html);
+  assert.ok(d.startsWith('Watch Emmet Cohen Trio Live at the Gilmore (2022), a full-length Emmet Cohen concert'), d);
+  assert.ok(!d.includes("from Live From Emmet's Place"));
+  assert.ok(d.includes('February 21, 2022'));
+  assert.ok(d.length <= 160);
+  const long = desc(renderEpisodePage(ep({ number: null, guests: null, title: 'X'.repeat(40) + ' ' + 'Y'.repeat(40), artists: Array.from({ length: 20 }, (_, i) => ({ name: `Player ${i}`, instrument: 'x' })) }), ctx));
+  assert.ok(long.length <= 160);
+});
+
+test('pager: "Previous" links ctx.prev and "Next" links ctx.next', () => {
+  const html = renderEpisodePage(ep(), { ...ctx, prev: ep({ id: 'n1', number: 135, guests: 'Ann' }) });
+  assert.match(html, /<a href="\/episodes\/vol-135\/">Previous: Ann - Live From Emmet&#39;s Place Vol\. 135 \(2025\)<\/a>/);
+});
+
+test('lineup links use the cleaned canonical names that collectMusicians keys by', () => {
+  const { selectEpisodes } = require('../site/episodes');
+  const { collectMusicians, MUSICIAN_ALIASES } = require('../site/musicians');
+  const eps = selectEpisodes({ x: { title: 'Concert', streamDate: '2025-01-01T12:00:00Z', duration: 5000, artists: [{ name: 'Feat. Sean Jones', instrument: 'Trumpet' }, { name: 'Bass', instrument: 'Russell Hall' }] } });
+  const ms = collectMusicians(eps, MUSICIAN_ALIASES);
+  const musicianSlugs = Object.fromEntries(ms.map((m) => [m.name, m.name.toLowerCase().replace(/ /g, '-')]));
+  const html = renderEpisodePage(eps[0], { slugs: { x: 'concert' }, musicianSlugs });
+  assert.ok(html.includes('<a href="/musicians/sean-jones/">Sean Jones</a>'));
+  assert.ok(html.includes('<a href="/musicians/russell-hall/">Russell Hall</a>'));
+});

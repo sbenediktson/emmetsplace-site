@@ -38,19 +38,19 @@ test('renderCards: card structure, artists, links', () => {
   const html = renderCards([ep()], slugs);
   assert.match(html, /<div class="video-card" data-type="studio" data-id="abc123" data-titles="[^"]*" data-artists="kurt elling joe farnsworth">/);
   assert.match(html, /data-titles="live from emmet&#39;s place vol\. 134 - kurt elling nature boy"/);
-  assert.match(html, /<a class="video-link" href="\/episodes\/vol-134\/" onclick="playInHero\('abc123',true,false\);return false;" style="background-image: url\('https:\/\/img\.youtube\.com\/vi\/abc123\/hqdefault\.jpg'\)"><\/a>/);
-  assert.match(html, /<h2><a class="title-link" href="\/episodes\/vol-134\/" onclick="playInHero\('abc123',true,false\);return false;">Live From Emmet&#39;s Place Vol\. 134 - Kurt Elling<\/a><\/h2>/);
+  assert.match(html, /<a class="video-link" href="\/episodes\/vol-134\/" onclick="if\(event\.metaKey\|\|event\.ctrlKey\|\|event\.shiftKey\)return true;playInHero\('abc123',true,false\);return false;" style="background-image: url\('https:\/\/img\.youtube\.com\/vi\/abc123\/hqdefault\.jpg'\)"><\/a>/);
+  assert.match(html, /<h2><a class="title-link" href="\/episodes\/vol-134\/" onclick="if\(event\.metaKey\|\|event\.ctrlKey\|\|event\.shiftKey\)return true;playInHero\('abc123',true,false\);return false;">Live From Emmet&#39;s Place Vol\. 134 - Kurt Elling<\/a><\/h2>/);
   assert.match(html, /<span class="studio-badge">In Studio<\/span>/);
   assert.match(html, /<div class="stream-date">March 3, 2025<\/div>/);
   assert.match(html, /<strong class="artist-name" data-text="Kurt Elling">Kurt Elling<\/strong> · vocals/);
-  assert.match(html, /<a class="video-entry-link" data-text="Nature Boy" href="https:\/\/www\.youtube\.com\/watch\?v=abc123&amp;t=125" onclick="playInHero\('abc123',true,false,125\);return false;">Nature Boy<\/a>/);
+  assert.match(html, /<a class="video-entry-link" data-text="Nature Boy" href="https:\/\/www\.youtube\.com\/watch\?v=abc123&amp;t=125" onclick="if\(event\.metaKey\|\|event\.ctrlKey\|\|event\.shiftKey\)return true;playInHero\('abc123',true,false,125\);return false;">Nature Boy<\/a>/);
   assert.match(html, /<div id="collapse-abc123" style="display:none">/);
   assert.match(html, /<button class="card-expand-btn" onclick="[^"]*">Show more<\/button>/);
 });
 
 test('renderCards: song without start has no t param; no artists/songs means no collapse block', () => {
   const html = renderCards([ep({ songs: [{ title: 'A', start: 0 }] })], slugs);
-  assert.match(html, /href="https:\/\/www\.youtube\.com\/watch\?v=abc123" onclick="playInHero\('abc123',true,false\);return false;"/);
+  assert.match(html, /href="https:\/\/www\.youtube\.com\/watch\?v=abc123" onclick="if\(event\.metaKey\|\|event\.ctrlKey\|\|event\.shiftKey\)return true;playInHero\('abc123',true,false\);return false;"/);
   const bare = renderCards([ep({ artists: [], songs: [] })], slugs);
   assert.doesNotMatch(bare, /collapse-|card-expand-btn/);
 });
@@ -90,4 +90,27 @@ test('replaceBetweenMarkers', () => {
   assert.throws(() => replaceBetweenMarkers('<!-- build:cards:start -->x', 'cards', 'x'), /cards/);
   assert.throws(() => replaceBetweenMarkers(html + html, 'cards', 'x'), /cards/);
   assert.strictEqual(replaceBetweenMarkers(html, 'cards', '$&$1'), 'A\n<!-- build:cards:start -->$&$1<!-- build:cards:end -->\nB');
+});
+
+// ---- final-review fix wave ----
+test('card date and quarter use America/New_York', () => {
+  const html = renderCards([ep({ id: 'abc123', streamDate: '2025-03-04T00:30:00Z' }), ep({ id: 'b', streamDate: '2025-01-01T03:00:00Z' })], slugs);
+  assert.match(html, /<div class="stream-date">March 3, 2025<\/div>/);
+  assert.match(html, /<div class="stream-date">December 31, 2024<\/div>/);
+  const qs = [...html.matchAll(/data-year="([^"]+)"/g)].map((m) => m[1]);
+  assert.deepStrictEqual(qs, ['2025-01', '2024-10']);
+});
+
+test('card handlers let modified clicks through to the episode page', () => {
+  const html = renderCards([ep()], slugs);
+  const handlers = [...html.matchAll(/onclick="([^"]*playInHero[^"]*)"/g)].map((m) => m[1]);
+  assert.strictEqual(handlers.length, 3);
+  for (const h of handlers) assert.ok(h.startsWith('if(event.metaKey||event.ctrlKey||event.shiftKey)return true;'), h);
+});
+
+test('songLink start is a floored number', () => {
+  const html = renderCards([ep({ songs: [{ title: 'A', start: '125.7' }, { title: 'B', start: 'abc' }, { title: 'C', start: '1);alert(1' }] })], slugs);
+  assert.match(html, /watch\?v=abc123&amp;t=125" onclick="[^"]*playInHero\('abc123',true,false,125\);return false;">A</);
+  assert.match(html, /watch\?v=abc123" onclick="[^"]*playInHero\('abc123',true,false\);return false;">B</);
+  assert.doesNotMatch(html, /alert/);
 });
