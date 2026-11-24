@@ -1,7 +1,5 @@
 'use strict';
 
-const SITE_URL = 'https://emmetsplace.com';
-
 function esc(s) {
   return String(s)
     .replace(/&/g, '&amp;')
@@ -11,4 +9,4 @@ function esc(s) {
     .replace(/'/g, '&#39;');
 }
 
-module.exports = { esc, SITE_URL };
+module.exports = { esc };

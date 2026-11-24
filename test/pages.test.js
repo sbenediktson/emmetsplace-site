@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { esc, SITE_URL } = require('../site/html');
+const { esc } = require('../site/html');
 const { renderEpisodePage, renderMusicianPage, renderWriterPage, episodeUrl, musicianUrl } = require('../site/pages');
 
 const ep = (o = {}) => ({
@@ -22,7 +22,6 @@ test('esc escapes the five characters', () => {
 test('url helpers', () => {
   assert.strictEqual(episodeUrl('x'), '/episodes/x/');
   assert.strictEqual(musicianUrl('y'), '/musicians/y/');
-  assert.strictEqual(SITE_URL, 'https://emmetsplace.com');
 });
 
 test('episode page has head metadata, embed, links and setlist', () => {
@@ -116,4 +115,39 @@ test('lineup links use the cleaned canonical names that collectMusicians keys by
   const html = renderEpisodePage(eps[0], { slugs: { x: 'concert' }, musicianSlugs });
   assert.ok(html.includes('<a href="/musicians/sean-jones/">Sean Jones</a>'));
   assert.ok(html.includes('<a href="/musicians/russell-hall/">Russell Hall</a>'));
+});
+
+test('sub-path config prefixes every internal link and absolute URL', () => {
+  const { setConfig, resetConfig } = require('../site/config');
+  const { link, absoluteUrl } = require('../site/pages');
+  setConfig({ siteUrl: 'https://www.sambenediktson.com', basePath: '/emmetsplace' });
+  try {
+    assert.strictEqual(episodeUrl('x'), '/episodes/x/');
+    assert.strictEqual(link('/page.css'), '/emmetsplace/page.css');
+    assert.strictEqual(absoluteUrl('/'), 'https://www.sambenediktson.com/emmetsplace/');
+    const url = 'https://www.sambenediktson.com/emmetsplace/episodes/vol-134-kurt-elling/';
+    const html = renderEpisodePage(ep(), { ...ctx, prev: ep({ id: 'n1', number: 133, guests: 'Ann' }), next: ep({ id: 'n1', number: 135, guests: 'Ann' }) });
+    assert.ok(html.includes(`<link rel="canonical" href="${url}">`));
+    assert.ok(html.includes(`property="og:url" content="${url}"`));
+    assert.ok(html.includes('href="/emmetsplace/page.css"'));
+    assert.ok(html.includes(`<a href="/emmetsplace/">Emmet's Place</a>`));
+    assert.ok(html.includes('<a href="/emmetsplace/">All episodes</a>'));
+    assert.ok(html.includes('href="/emmetsplace/musicians/kurt-elling/"'));
+    assert.strictEqual((html.match(/href="\/emmetsplace\/episodes\/vol-135\/"/g) || []).length, 2);
+    assert.ok(!/(href|src)="\/(episodes|musicians|page\.css|")/.test(html));
+    assert.ok(!html.includes('emmetsplace.com'));
+
+    const m = renderMusicianPage({ name: 'Kurt Elling', instruments: ['vocals'], appearances: [ep()] }, ctx);
+    assert.ok(m.includes('href="/emmetsplace/episodes/vol-134-kurt-elling/"'));
+    assert.ok(m.includes('href="/emmetsplace/page.css"'));
+    assert.ok(m.includes('<link rel="canonical" href="https://www.sambenediktson.com/emmetsplace/musicians/kurt-elling/">'));
+    assert.ok(!/(href|src)="\/(episodes|musicians|page\.css|")/.test(m));
+
+    const w = renderWriterPage({ name: 'Ann', slug: 'ann', bio: '', episodeIds: ['abc123'] }, [ep()], ctx);
+    assert.ok(w.includes('href="/emmetsplace/episodes/vol-134-kurt-elling/"'));
+    assert.ok(w.includes('https://www.sambenediktson.com/emmetsplace/writers/ann/'));
+    assert.ok(!/(href|src)="\/(episodes|musicians|page\.css|")/.test(w));
+  } finally {
+    resetConfig();
+  }
 });

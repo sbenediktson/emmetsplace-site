@@ -1,6 +1,7 @@
 'use strict';
 
 const { esc } = require('./html');
+const { link } = require('./config');
 const { stripEmoji } = require('./episodes');
 const { nyParts, formatLongDate } = require('./dates');
 
@@ -44,7 +45,7 @@ function renderCard(ep, slug) {
   const videoTitle = stripEmoji(ep.title);
   const type = cardType(ep);
   const thumb = `https://img.youtube.com/vi/${id}/hqdefault.jpg`;
-  const href = `/episodes/${slug}/`;
+  const href = link(`/episodes/${slug}/`);
   const play = `${LET_MODIFIED_CLICK}playInHero('${esc(id)}',true,false);return false;`;
 
   const artistsHTML = ep.artists.length

@@ -1,6 +1,7 @@
 'use strict';
 
-const { esc, SITE_URL } = require('./html');
+const { esc } = require('./html');
+const { absoluteUrl } = require('./config');
 const { pageTitle } = require('./episodes');
 const { episodeUrl, musicianUrl } = require('./pages');
 
@@ -17,13 +18,13 @@ const dateOf = (ep) => (ep.streamDate ? String(ep.streamDate).slice(0, 10) : '')
 function renderLlmsTxt(episodes, musicians, slugs) {
   const eps = episodes.map((e) => {
     const d = dateOf(e);
-    return `- [${pageTitle(e)}](${SITE_URL}${episodeUrl(slugs.episodes[e.id])})${d ? `: ${d}` : ''}`;
+    return `- [${pageTitle(e)}](${absoluteUrl(episodeUrl(slugs.episodes[e.id]))})${d ? `: ${d}` : ''}`;
   });
   const ms = musicians.map((m) => {
     const n = m.appearances.length;
-    return `- [${m.name}](${SITE_URL}${musicianUrl(slugs.musicians[m.name])}): ${n} episode${n === 1 ? '' : 's'}`;
+    return `- [${m.name}](${absoluteUrl(musicianUrl(slugs.musicians[m.name]))}): ${n} episode${n === 1 ? '' : 's'}`;
   });
-  return `# Emmet's Place\n\n> ${LLMS_SUMMARY}\n\nSitemap: ${SITE_URL}/sitemap.xml\n\n## Episodes\n\n${eps.join('\n')}\n\n## Musicians\n\n${ms.join('\n')}\n`;
+  return `# Emmet's Place\n\n> ${LLMS_SUMMARY}\n\nSitemap: ${absoluteUrl('/sitemap.xml')}\n\n## Episodes\n\n${eps.join('\n')}\n\n## Musicians\n\n${ms.join('\n')}\n`;
 }
 
 module.exports = { LLMS_SUMMARY, renderSitemap, renderLlmsTxt, dateOf };

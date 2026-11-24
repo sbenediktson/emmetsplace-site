@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { SITE_URL } = require('./site/html');
+const { setConfig, resetConfig, absoluteUrl } = require('./site/config');
 const { selectEpisodes } = require('./site/episodes');
 const { episodeSlugBase, slugify, allocateSlugs } = require('./site/slugs');
 const { collectMusicians, MUSICIAN_ALIASES } = require('./site/musicians');
@@ -54,7 +54,15 @@ function requireSlugs(items, map, what) {
   }
 }
 
+function readConfig(root) {
+  const file = path.join(root, 'site.config.json');
+  if (!fs.existsSync(file)) return {};
+  return readJson(file, 'site.config.json');
+}
+
 function buildSite({ root }) {
+  resetConfig();
+  setConfig(readConfig(root));
   const videos = readJson(path.join(root, 'videos.json'), 'videos.json');
   if (!videos || typeof videos.data !== 'object' || videos.data === null) throw new Error('videos.json has no "data" object');
   const episodes = selectEpisodes(videos.data);
@@ -88,7 +96,7 @@ function buildSite({ root }) {
   }
 
   const newest = (list) => list.map(dateOf).filter(Boolean).sort().pop();
-  const entry = (loc, lastmod) => ({ loc: SITE_URL + loc, ...(lastmod ? { lastmod } : {}) });
+  const entry = (loc, lastmod) => ({ loc: absoluteUrl(loc), ...(lastmod ? { lastmod } : {}) });
   files.set('sitemap.xml', renderSitemap([
     entry('/'),
     ...episodes.map((e) => entry(episodeUrl(slugs.episodes[e.id]), dateOf(e))),

@@ -114,3 +114,15 @@ test('songLink start is a floored number', () => {
   assert.match(html, /watch\?v=abc123" onclick="[^"]*playInHero\('abc123',true,false\);return false;">B</);
   assert.doesNotMatch(html, /alert/);
 });
+
+test('renderCards: sub-path config prefixes card hrefs', () => {
+  const { setConfig, resetConfig } = require('../site/config');
+  setConfig({ siteUrl: 'https://www.sambenediktson.com', basePath: '/emmetsplace' });
+  try {
+    const html = renderCards([ep()], slugs);
+    assert.strictEqual((html.match(/href="\/emmetsplace\/episodes\/vol-134\/"/g) || []).length, 2);
+    assert.ok(!html.includes('href="/episodes/'));
+  } finally {
+    resetConfig();
+  }
+});

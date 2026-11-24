@@ -174,3 +174,55 @@ test('writers: duplicate slug throws a clear error', () => {
   ]));
   assert.throws(() => buildSite({ root }), /Duplicate writer slug "jane-doe"/);
 });
+
+const SUB_CONFIG = { siteUrl: 'https://www.sambenediktson.com', basePath: '/emmetsplace' };
+
+test('buildSite: site.config.json puts the whole site under a sub-path', () => {
+  const root = project({ home: MINI_HOME });
+  fs.writeFileSync(path.join(root, 'site.config.json'), JSON.stringify(SUB_CONFIG));
+  const { files } = buildSite({ root });
+  const prefix = 'https://www.sambenediktson.com/emmetsplace/';
+  const slug = Object.values(JSON.parse(files.get('slugs.json')).episodes)[0];
+  const page = files.get(`episodes/${slug}/index.html`);
+  assert.ok(page.includes(`<link rel="canonical" href="${prefix}episodes/${slug}/">`));
+  assert.ok(page.includes(`property="og:url" content="${prefix}episodes/${slug}/"`));
+  assert.ok(page.includes('href="/emmetsplace/page.css"'));
+  assert.ok(page.includes('href="/emmetsplace/"'));
+  assert.ok(files.get('index.html').includes(`href="/emmetsplace/episodes/${slug}/"`));
+  for (const [name, content] of files) {
+    if (!name.endsWith('.html')) continue;
+    assert.ok(!/href="\/(episodes\/|musicians\/|page\.css"|")/.test(content), `${name} has a root-relative link`);
+    assert.ok(!/src="\/(?!\/)/.test(content), `${name} has a root-relative src`);
+  }
+  const locs = [...files.get('sitemap.xml').matchAll(/<loc>([^<]*)<\/loc>/g)].map((m) => m[1]);
+  assert.ok(locs.length > 2);
+  assert.ok(locs.every((l) => l.startsWith(prefix)));
+  assert.ok(locs.includes(prefix));
+  const llms = files.get('llms.txt');
+  assert.ok(llms.includes(`Sitemap: ${prefix}sitemap.xml`));
+  const urls = [...llms.matchAll(/\]\((https?:[^)]*)\)/g)].map((m) => m[1]);
+  assert.ok(urls.length > 2 && urls.every((u) => u.startsWith(prefix)));
+  for (const content of files.values()) assert.ok(!content.includes('emmetsplace.com'));
+});
+
+test('buildSite: config does not leak between builds', () => {
+  const sub = project();
+  fs.writeFileSync(path.join(sub, 'site.config.json'), JSON.stringify(SUB_CONFIG));
+  buildSite({ root: sub });
+  const { files } = buildSite({ root: project() });
+  assert.ok(files.get('sitemap.xml').includes('<loc>https://emmetsplace.com/</loc>'));
+  assert.ok(!files.get('index.html').includes('/emmetsplace/'));
+});
+
+test('buildSite: invalid site.config.json throws; CLI exits 1 and leaves the tree untouched', () => {
+  for (const cfg of ['{ not json', JSON.stringify({ basePath: '/emmetsplace/' }), JSON.stringify({ siteUrl: 'https://x/' }), JSON.stringify({ nope: 1 })]) {
+    const root = project();
+    fs.writeFileSync(path.join(root, 'site.config.json'), cfg);
+    const before = snapshot(root);
+    assert.throws(() => buildSite({ root }), /site\.config\.json|site config|Site config/i);
+    const r = cli(root);
+    assert.strictEqual(r.status, 1);
+    assert.match(r.stderr, /^build-site: /);
+    assert.deepStrictEqual(snapshot(root), before);
+  }
+});
